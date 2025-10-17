@@ -3,7 +3,7 @@ use bevy::prelude::*;
 const TILE_SIZE: f32 = 100.0;
 const TILE_MARGIN: f32 = 5.0;
 const TRANSLATION_OFFSET_X: f32 = (TILE_SIZE * 2.5) + (TILE_MARGIN * 2.0);
-const TRANSLATION_OFFSET_Y: f32 = (TILE_SIZE * 2.5) + (TILE_MARGIN * 2.0);
+const TRANSLATION_OFFSET_Y: f32 = -((TILE_SIZE * 3.0) + (TILE_MARGIN * 2.5));
 
 #[derive(Resource)]
 struct GameState {
@@ -54,18 +54,19 @@ fn setup(
                 Transform {
                     translation: Vec3::new(
                         (index as f32 * (TILE_SIZE + TILE_MARGIN)) - TRANSLATION_OFFSET_X,
-                        (row_index as f32 * (TILE_SIZE + TILE_MARGIN)) - TRANSLATION_OFFSET_Y,
+                        -(row_index as f32 * (TILE_SIZE + TILE_MARGIN)) - TRANSLATION_OFFSET_Y,
                         0.0,
                     ),
                     ..default()
                 },
+                Text2d("".into()),
                 Tile {
                     letter: Option::None,
                     color: Color::WHITE,
                 },
                 Location {
-                    x: row_index,
-                    y: index,
+                    x: index,
+                    y: row_index,
                 },
             ));
         }
@@ -75,18 +76,28 @@ fn setup(
 fn handle_keyboard_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut game_state: ResMut<GameState>,
-    mut query: Query<(&mut MeshMaterial2d<ColorMaterial>, &Location, &mut Tile)>,
+    mut query: Query<(
+        &mut MeshMaterial2d<ColorMaterial>,
+        &Location,
+        &mut Text2d,
+        &mut Tile,
+    )>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     for key in keyboard_input.get_just_pressed() {
         if let Some(valid_char) = validate_key(*key) {
-            for (material_handle, location, mut tile) in query.iter_mut() {
+            if game_state.current_index > 4 {
+                println!("out of tiles!");
+                return;
+            }
+            for (material_handle, location, mut text_handle, mut tile) in query.iter_mut() {
                 if location.x == game_state.current_index
                     && location.y == game_state.current_row
                     && let Some(material) = materials.get_mut(&material_handle.0)
                 {
                     material.color = Color::BLACK;
                     tile.letter = Some(valid_char);
+                    text_handle.0 = valid_char.to_string();
                 }
             }
             game_state.current_index += 1;
