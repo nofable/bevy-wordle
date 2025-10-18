@@ -5,24 +5,89 @@ const TILE_MARGIN: f32 = 5.0;
 const TRANSLATION_OFFSET_X: f32 = (TILE_SIZE * 2.5) + (TILE_MARGIN * 2.0);
 const TRANSLATION_OFFSET_Y: f32 = -((TILE_SIZE * 3.0) + (TILE_MARGIN * 2.5));
 
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 struct GameState {
     answer: String,
     current_row: usize,
     current_index: usize,
+    grid: [[Option<char>; 5]; 6],
+    success: bool,
+}
+impl GameState {
+    fn new() -> GameState {
+        GameState {
+            answer: String::from("hello"),
+            current_row: 0,
+            current_index: 0,
+            grid: [[None; 5]; 6],
+            success: false,
+        }
+    }
+
+    fn add_letter(&mut self, c: char) {
+        if self.current_index <= 4 {
+            self.grid[self.current_row][self.current_index] = Some(c);
+            self.current_index += 1;
+        }
+    }
+
+    fn check_answer(&mut self) -> bool {
+        let guess: String = self.grid[self.current_row]
+            .iter()
+            .filter_map(|&opt| opt)
+            .collect();
+
+        guess == self.answer
+    }
+
+    fn can_add_letter(&self) -> bool {
+        self.current_row < 6 && self.current_index < 5
+    }
+
+    fn can_make_guess(&self) -> bool {
+        self.current_row < 6 && self.current_index > 4
+    }
+
+    fn can_make_delete(&self) -> bool {
+        self.current_index > 0
+    }
+
+    fn make_delete(&mut self) {
+        if self.can_make_delete() {
+            self.grid[self.current_row][self.current_index - 1] = None;
+            self.current_index -= 1;
+        }
+    }
+
+    fn make_guess(&mut self) {
+        if self.current_index <= 4 {
+            println!("Cannot check an incomplete answer");
+            return;
+        }
+        if self.current_row > 5 {
+            println!("Out of guesses!");
+            return;
+        }
+        if self.check_answer() {
+            self.success = true;
+            println!("Well done, you got it!");
+        } else {
+            println!("Not quite!");
+            self.current_row += 1;
+            self.current_index = 0;
+        }
+    }
 }
 
 #[derive(Clone, Copy, Component)]
-struct Tile {
-    letter: Option<char>,
-    color: Color,
-}
+struct Tile;
 
 #[derive(Component)]
 struct Location {
     x: usize,
     y: usize,
 }
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -37,16 +102,9 @@ fn setup(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     commands.spawn(Camera2d);
-
-    commands.insert_resource(GameState {
-        answer: String::from("hello"),
-        current_row: 0,
-        current_index: 0,
-    });
-
+    let game_state = GameState::new();
     // build game grid
-    let grid: [[usize; 5]; 6] = [[0; 5]; 6];
-    for (row_index, row) in grid.iter().enumerate() {
+    for (row_index, row) in game_state.grid.iter().enumerate() {
         for (index, _) in row.iter().enumerate() {
             commands.spawn((
                 Mesh2d(meshes.add(Rectangle::new(TILE_SIZE, TILE_SIZE))),
@@ -60,10 +118,7 @@ fn setup(
                     ..default()
                 },
                 Text2d("".into()),
-                Tile {
-                    letter: Option::None,
-                    color: Color::WHITE,
-                },
+                Tile,
                 Location {
                     x: index,
                     y: row_index,
@@ -71,37 +126,50 @@ fn setup(
             ));
         }
     }
+
+    commands.insert_resource(game_state);
 }
 
 fn handle_keyboard_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut game_state: ResMut<GameState>,
-    mut query: Query<(
-        &mut MeshMaterial2d<ColorMaterial>,
-        &Location,
-        &mut Text2d,
-        &mut Tile,
-    )>,
+    mut query: Query<(&mut MeshMaterial2d<ColorMaterial>, &Location, &mut Text2d), With<Tile>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    for key in keyboard_input.get_just_pressed() {
-        if let Some(valid_char) = validate_key(*key) {
-            if game_state.current_index > 4 {
-                println!("out of tiles!");
-                return;
+    let current_row = game_state.current_row;
+    let current_index = game_state.current_index;
+
+    if let Some(key) = keyboard_input.get_just_pressed().next() {
+        if *key == KeyCode::Enter && game_state.can_make_guess() {
+            game_state.make_guess();
+        }
+
+        if *key == KeyCode::Backspace && game_state.can_make_delete() {
+            game_state.make_delete();
+            for (material_handle, location, mut text_handle) in query.iter_mut() {
+                if location.x == current_index - 1
+                    && location.y == current_row
+                    && let Some(material) = materials.get_mut(&material_handle.0)
+                {
+                    material.color = Color::WHITE;
+                    text_handle.0 = "".into();
+                }
             }
-            for (material_handle, location, mut text_handle, mut tile) in query.iter_mut() {
-                if location.x == game_state.current_index
-                    && location.y == game_state.current_row
+        }
+
+        if let Some(valid_char) = validate_key(*key)
+            && game_state.can_add_letter()
+        {
+            game_state.add_letter(valid_char);
+            for (material_handle, location, mut text_handle) in query.iter_mut() {
+                if location.x == current_index
+                    && location.y == current_row
                     && let Some(material) = materials.get_mut(&material_handle.0)
                 {
                     material.color = Color::BLACK;
-                    tile.letter = Some(valid_char);
                     text_handle.0 = valid_char.to_string();
                 }
             }
-            game_state.current_index += 1;
-            break;
         }
     }
 }
