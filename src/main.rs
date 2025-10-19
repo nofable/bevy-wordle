@@ -13,6 +13,14 @@ struct GameState {
     grid: [[Option<char>; 5]; 6],
     success: bool,
 }
+
+#[derive(Copy, Clone)]
+enum TileState {
+    Correct,
+    Misplaced,
+    Incorrect,
+}
+
 impl GameState {
     fn new() -> GameState {
         GameState {
@@ -31,13 +39,30 @@ impl GameState {
         }
     }
 
-    fn check_answer(&mut self) -> bool {
-        let guess: String = self.grid[self.current_row]
+    fn check_answer(&mut self) -> (bool, Vec<TileState>) {
+        let split: Vec<char> = self.answer.chars().collect();
+        let guess = self.grid[self.current_row];
+        let breakdown: Vec<TileState> = guess
+            .iter()
+            .zip(split.iter())
+            .map(|(op, cb)| {
+                let ca = op.unwrap();
+                if ca == *cb {
+                    TileState::Correct
+                } else if split.contains(&ca) {
+                    TileState::Misplaced
+                } else {
+                    TileState::Incorrect
+                }
+            })
+            .collect();
+        let guess_as_string: String = self.grid[self.current_row]
             .iter()
             .filter_map(|&opt| opt)
             .collect();
 
-        guess == self.answer
+        let correct = guess_as_string == self.answer;
+        (correct, breakdown)
     }
 
     fn can_add_letter(&self) -> bool {
@@ -59,22 +84,26 @@ impl GameState {
         }
     }
 
-    fn make_guess(&mut self) {
+    fn make_guess(&mut self) -> Option<Vec<TileState>> {
         if self.current_index <= 4 {
             println!("Cannot check an incomplete answer");
-            return;
+            return None;
         }
         if self.current_row > 5 {
             println!("Out of guesses!");
-            return;
+            return None;
         }
-        if self.check_answer() {
+        let (correct, breakdown) = self.check_answer();
+        if correct {
             self.success = true;
             println!("Well done, you got it!");
+            Some(breakdown)
         } else {
             println!("Not quite!");
             self.current_row += 1;
             self.current_index = 0;
+            // TODO
+            Some(breakdown)
         }
     }
 }
@@ -141,7 +170,22 @@ fn handle_keyboard_input(
 
     if let Some(key) = keyboard_input.get_just_pressed().next() {
         if *key == KeyCode::Enter && game_state.can_make_guess() {
-            game_state.make_guess();
+            if let Some(breakdown) = game_state.make_guess() {
+                for (material_handle, location, mut text_handle) in query.iter_mut() {
+                    if location.y == current_row
+                        && let Some(material) = materials.get_mut(&material_handle.0)
+                    {
+                        let x = location.x;
+
+                        let tile_state = breakdown[x];
+                        match tile_state {
+                            TileState::Correct => material.color = Color::Srgba(Srgba::GREEN),
+                            TileState::Misplaced => material.color = Color::Srgba(Srgba::RED),
+                            TileState::Incorrect => material.color = Color::BLACK,
+                        }
+                    }
+                }
+            }
         }
 
         if *key == KeyCode::Backspace && game_state.can_make_delete() {
