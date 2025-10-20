@@ -1,24 +1,42 @@
 use bevy::prelude::*;
 
+const ROW_COUNT: usize = 6;
+const COL_COUNT: usize = 5;
 const TILE_SIZE: f32 = 100.0;
 const TILE_MARGIN: f32 = 5.0;
-const TRANSLATION_OFFSET_X: f32 = (TILE_SIZE * 2.5) + (TILE_MARGIN * 2.0);
-const TRANSLATION_OFFSET_Y: f32 = -((TILE_SIZE * 3.0) + (TILE_MARGIN * 2.5));
+const TRANSLATION_OFFSET_X: f32 = (TILE_SIZE * (COL_COUNT as f32 / 2.0)) + (TILE_MARGIN * 2.0);
+const TRANSLATION_OFFSET_Y: f32 = -((TILE_SIZE * (ROW_COUNT as f32 / 2.0)) + (TILE_MARGIN * 2.5));
 
 #[derive(Resource, Clone)]
 struct GameState {
     answer: String,
     current_row: usize,
     current_index: usize,
-    grid: [[Option<char>; 5]; 6],
+    grid: [[Tile; 5]; 6],
     success: bool,
 }
 
 #[derive(Copy, Clone)]
 enum TileState {
+    Unknown,
     Correct,
     Misplaced,
     Incorrect,
+}
+
+#[derive(Clone, Copy, Component)]
+struct Tile {
+    state: TileState,
+    letter: Option<char>,
+}
+
+impl Tile {
+    fn new() -> Tile {
+        Tile {
+            state: TileState::Unknown,
+            letter: None,
+        }
+    }
 }
 
 impl GameState {
@@ -27,50 +45,20 @@ impl GameState {
             answer: String::from("hello"),
             current_row: 0,
             current_index: 0,
-            grid: [[None; 5]; 6],
+            grid: [[Tile::new(); COL_COUNT]; ROW_COUNT],
             success: false,
         }
     }
 
+    fn can_add_letter(&self) -> bool {
+        self.current_row < ROW_COUNT && self.current_index < COL_COUNT
+    }
+
     fn add_letter(&mut self, c: char) {
-        if self.current_index <= 4 {
-            self.grid[self.current_row][self.current_index] = Some(c);
+        if self.can_add_letter() {
+            self.grid[self.current_row][self.current_index].letter = Some(c);
             self.current_index += 1;
         }
-    }
-
-    fn check_answer(&mut self) -> (bool, Vec<TileState>) {
-        let split: Vec<char> = self.answer.chars().collect();
-        let guess = self.grid[self.current_row];
-        let breakdown: Vec<TileState> = guess
-            .iter()
-            .zip(split.iter())
-            .map(|(op, cb)| {
-                let ca = op.unwrap();
-                if ca == *cb {
-                    TileState::Correct
-                } else if split.contains(&ca) {
-                    TileState::Misplaced
-                } else {
-                    TileState::Incorrect
-                }
-            })
-            .collect();
-        let guess_as_string: String = self.grid[self.current_row]
-            .iter()
-            .filter_map(|&opt| opt)
-            .collect();
-
-        let correct = guess_as_string == self.answer;
-        (correct, breakdown)
-    }
-
-    fn can_add_letter(&self) -> bool {
-        self.current_row < 6 && self.current_index < 5
-    }
-
-    fn can_make_guess(&self) -> bool {
-        self.current_row < 6 && self.current_index > 4
     }
 
     fn can_make_delete(&self) -> bool {
@@ -79,37 +67,54 @@ impl GameState {
 
     fn make_delete(&mut self) {
         if self.can_make_delete() {
-            self.grid[self.current_row][self.current_index - 1] = None;
+            self.grid[self.current_row][self.current_index - 1].letter = None;
             self.current_index -= 1;
         }
     }
 
-    fn make_guess(&mut self) -> Option<Vec<TileState>> {
-        if self.current_index <= 4 {
-            println!("Cannot check an incomplete answer");
-            return None;
-        }
-        if self.current_row > 5 {
-            println!("Out of guesses!");
-            return None;
-        }
-        let (correct, breakdown) = self.check_answer();
-        if correct {
-            self.success = true;
-            println!("Well done, you got it!");
-            Some(breakdown)
-        } else {
-            println!("Not quite!");
-            self.current_row += 1;
-            self.current_index = 0;
-            // TODO
-            Some(breakdown)
+    fn check_answer(&mut self) {
+        let split: Vec<char> = self.answer.chars().collect();
+        let mut guess = self.grid[self.current_row];
+        // TODO: this isn't currently writing back to the game state for some reason
+        guess
+            .iter_mut()
+            .zip(split.iter())
+            .for_each(|(tile, answer_char)| {
+                let guess_char = tile.letter.unwrap();
+                if guess_char == *answer_char {
+                    tile.state = TileState::Correct;
+                } else if split.contains(answer_char) {
+                    tile.state = TileState::Misplaced;
+                } else {
+                    tile.state = TileState::Incorrect;
+                }
+            });
+
+        let guess_as_string: String = self.grid[self.current_row]
+            .iter()
+            .filter_map(|&tile| tile.letter)
+            .collect();
+
+        self.success = guess_as_string == self.answer;
+    }
+
+    fn can_make_guess(&self) -> bool {
+        self.current_row < ROW_COUNT && self.current_index >= COL_COUNT
+    }
+
+    fn make_guess(&mut self) {
+        if self.can_make_guess() {
+            self.check_answer();
+            if self.success {
+                println!("Well done, you got it!");
+            } else {
+                println!("Not quite!");
+                self.current_row += 1;
+                self.current_index = 0;
+            }
         }
     }
 }
-
-#[derive(Clone, Copy, Component)]
-struct Tile;
 
 #[derive(Component)]
 struct Location {
@@ -147,7 +152,7 @@ fn setup(
                     ..default()
                 },
                 Text2d("".into()),
-                Tile,
+                Tile::new(),
                 Location {
                     x: index,
                     y: row_index,
@@ -170,19 +175,19 @@ fn handle_keyboard_input(
 
     if let Some(key) = keyboard_input.get_just_pressed().next() {
         if *key == KeyCode::Enter && game_state.can_make_guess() {
-            if let Some(breakdown) = game_state.make_guess() {
-                for (material_handle, location, mut text_handle) in query.iter_mut() {
-                    if location.y == current_row
-                        && let Some(material) = materials.get_mut(&material_handle.0)
-                    {
-                        let x = location.x;
+            game_state.make_guess();
+            for (material_handle, location, _) in query.iter_mut() {
+                if location.y == current_row
+                    && let Some(material) = materials.get_mut(&material_handle.0)
+                {
+                    let x = location.x;
 
-                        let tile_state = breakdown[x];
-                        match tile_state {
-                            TileState::Correct => material.color = Color::Srgba(Srgba::GREEN),
-                            TileState::Misplaced => material.color = Color::Srgba(Srgba::RED),
-                            TileState::Incorrect => material.color = Color::BLACK,
-                        }
+                    let tile_state = game_state.grid[current_row][x].state;
+                    match tile_state {
+                        TileState::Correct => material.color = Color::Srgba(Srgba::GREEN),
+                        TileState::Misplaced => material.color = Color::Srgba(Srgba::RED),
+                        TileState::Incorrect => material.color = Color::BLACK,
+                        TileState::Unknown => material.color = Color::BLACK,
                     }
                 }
             }
