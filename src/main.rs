@@ -1,3 +1,5 @@
+mod answers;
+use answers::random_answer;
 use bevy::prelude::*;
 
 const ROW_COUNT: usize = 6;
@@ -42,7 +44,7 @@ impl Tile {
 impl GameState {
     fn new() -> GameState {
         GameState {
-            answer: String::from("hello"),
+            answer: random_answer(),
             current_row: 0,
             current_index: 0,
             grid: vec![vec![Tile::new(); COL_COUNT]; ROW_COUNT],
