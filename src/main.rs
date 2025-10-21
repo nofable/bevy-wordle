@@ -12,7 +12,7 @@ struct GameState {
     answer: String,
     current_row: usize,
     current_index: usize,
-    grid: [[Tile; 5]; 6],
+    grid: Vec<Vec<Tile>>,
     success: bool,
 }
 
@@ -45,7 +45,7 @@ impl GameState {
             answer: String::from("hello"),
             current_row: 0,
             current_index: 0,
-            grid: [[Tile::new(); COL_COUNT]; ROW_COUNT],
+            grid: vec![vec![Tile::new(); COL_COUNT]; ROW_COUNT],
             success: false,
         }
     }
@@ -73,23 +73,32 @@ impl GameState {
     }
 
     fn check_answer(&mut self) {
-        let split: Vec<char> = self.answer.chars().collect();
-        let mut guess = self.grid[self.current_row];
-        // TODO: this isn't currently writing back to the game state for some reason
-        guess
+        let split_answer: Vec<char> = self.answer.chars().collect();
+        let mut guess = self.grid[self.current_row].clone();
+        let annotated_row = guess
             .iter_mut()
-            .zip(split.iter())
-            .for_each(|(tile, answer_char)| {
+            .zip(split_answer.iter())
+            .map(|(tile, answer_char)| {
                 let guess_char = tile.letter.unwrap();
                 if guess_char == *answer_char {
-                    tile.state = TileState::Correct;
-                } else if split.contains(answer_char) {
-                    tile.state = TileState::Misplaced;
+                    Tile {
+                        letter: tile.letter,
+                        state: TileState::Correct,
+                    }
+                } else if split_answer.contains(&guess_char) {
+                    Tile {
+                        letter: tile.letter,
+                        state: TileState::Misplaced,
+                    }
                 } else {
-                    tile.state = TileState::Incorrect;
+                    Tile {
+                        letter: tile.letter,
+                        state: TileState::Incorrect,
+                    }
                 }
-            });
-
+            })
+            .collect();
+        self.grid[self.current_row] = annotated_row;
         let guess_as_string: String = self.grid[self.current_row]
             .iter()
             .filter_map(|&tile| tile.letter)
@@ -185,7 +194,9 @@ fn handle_keyboard_input(
                     let tile_state = game_state.grid[current_row][x].state;
                     match tile_state {
                         TileState::Correct => material.color = Color::Srgba(Srgba::GREEN),
-                        TileState::Misplaced => material.color = Color::Srgba(Srgba::RED),
+                        TileState::Misplaced => {
+                            material.color = Color::Srgba(Srgba::new(1.0, 0.6, 0.0, 0.0))
+                        }
                         TileState::Incorrect => material.color = Color::BLACK,
                         TileState::Unknown => material.color = Color::BLACK,
                     }
