@@ -1,131 +1,6 @@
-mod answers;
-use answers::random_answer;
 use bevy::prelude::*;
-
-const ROW_COUNT: usize = 6;
-const COL_COUNT: usize = 5;
-const TILE_SIZE: f32 = 100.0;
-const TILE_MARGIN: f32 = 5.0;
-const TRANSLATION_OFFSET_X: f32 = (TILE_SIZE * (COL_COUNT as f32 / 2.0)) + (TILE_MARGIN * 2.0);
-const TRANSLATION_OFFSET_Y: f32 = -((TILE_SIZE * (ROW_COUNT as f32 / 2.0)) + (TILE_MARGIN * 2.5));
-
-#[derive(Resource, Clone)]
-struct GameState {
-    answer: String,
-    current_row: usize,
-    current_index: usize,
-    grid: Vec<Vec<Tile>>,
-    success: bool,
-}
-
-#[derive(Copy, Clone)]
-enum TileState {
-    Unknown,
-    Correct,
-    Misplaced,
-    Incorrect,
-}
-
-#[derive(Clone, Copy, Component)]
-struct Tile {
-    state: TileState,
-    letter: Option<char>,
-}
-
-impl Tile {
-    fn new() -> Tile {
-        Tile {
-            state: TileState::Unknown,
-            letter: None,
-        }
-    }
-}
-
-impl GameState {
-    fn new() -> GameState {
-        GameState {
-            answer: random_answer(),
-            current_row: 0,
-            current_index: 0,
-            grid: vec![vec![Tile::new(); COL_COUNT]; ROW_COUNT],
-            success: false,
-        }
-    }
-
-    fn can_add_letter(&self) -> bool {
-        self.current_row < ROW_COUNT && self.current_index < COL_COUNT
-    }
-
-    fn add_letter(&mut self, c: char) {
-        if self.can_add_letter() {
-            self.grid[self.current_row][self.current_index].letter = Some(c);
-            self.current_index += 1;
-        }
-    }
-
-    fn can_make_delete(&self) -> bool {
-        self.current_index > 0
-    }
-
-    fn make_delete(&mut self) {
-        if self.can_make_delete() {
-            self.grid[self.current_row][self.current_index - 1].letter = None;
-            self.current_index -= 1;
-        }
-    }
-
-    fn check_answer(&mut self) {
-        let split_answer: Vec<char> = self.answer.chars().collect();
-        let mut guess = self.grid[self.current_row].clone();
-        let annotated_row = guess
-            .iter_mut()
-            .zip(split_answer.iter())
-            .map(|(tile, answer_char)| {
-                let guess_char = tile.letter.unwrap();
-                if guess_char == *answer_char {
-                    Tile {
-                        letter: tile.letter,
-                        state: TileState::Correct,
-                    }
-                } else if split_answer.contains(&guess_char) {
-                    Tile {
-                        letter: tile.letter,
-                        state: TileState::Misplaced,
-                    }
-                } else {
-                    Tile {
-                        letter: tile.letter,
-                        state: TileState::Incorrect,
-                    }
-                }
-            })
-            .collect();
-        self.grid[self.current_row] = annotated_row;
-        let guess_as_string: String = self.grid[self.current_row]
-            .iter()
-            .filter_map(|&tile| tile.letter)
-            .collect();
-
-        self.success = guess_as_string == self.answer;
-    }
-
-    fn can_make_guess(&self) -> bool {
-        self.current_row < ROW_COUNT && self.current_index >= COL_COUNT
-    }
-
-    fn make_guess(&mut self) {
-        if self.can_make_guess() {
-            self.check_answer();
-            if self.success {
-                println!("Well done, you got it!");
-            } else {
-                println!("Not quite!");
-                self.current_row += 1;
-                self.current_index = 0;
-            }
-        }
-    }
-}
+mod game_state;
+use game_state::*;
 
 #[derive(Component)]
 struct Location {
@@ -147,7 +22,7 @@ fn setup(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     commands.spawn(Camera2d);
-    let game_state = GameState::new();
+    let game_state = game_state::GameState::new();
     // build game grid
     for (row_index, row) in game_state.grid.iter().enumerate() {
         for (index, _) in row.iter().enumerate() {
